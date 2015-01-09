@@ -18,7 +18,11 @@ class App : public Customer {
   virtual void init() = 0;
   // run the applications: load data, iterating...
   virtual void run() = 0;
-  void stop();
+
+  // call by the scheduler
+  void stopAll();
+  // void startSystem();
+
  protected:
   AppConfig app_cf_;
 

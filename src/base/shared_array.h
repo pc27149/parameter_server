@@ -31,7 +31,7 @@ template<typename V> class SArray {
   // Create an array with length n. Values are not initialized. To initialize
   // them, call setValue(v) or setZero()
   explicit SArray(size_t n) { resize(n); }
-  explicit SArray(size_t n, V val) { resize(n); setValue(val); }
+  explicit SArray(size_t n, V val) { resize(n, val); }
 
   // Zero-copy constructor, namely just copy the pointer
   template <typename W> explicit SArray(const SArray<W>& arr);
@@ -77,6 +77,7 @@ template<typename V> class SArray {
   // If n <= capacity_, then only change the size. otherwise, append n -
   // current_size entries (without value initialization)
   void resize(size_t n);
+  void resize(size_t n, V val) { resize(n); setValue(val); }
   // Requests that the capacity be at least enough to contain n elements.
   void reserve(size_t n);
   void clear() { reset(nullptr, 0); }
@@ -122,6 +123,13 @@ template<typename V> class SArray {
   // return an Eigen3 array, zero-copy
   typedef Eigen::Map<Eigen::Array<V, Eigen::Dynamic, 1> > EArrayMap;
   EArrayMap eigenArray() const { return EArrayMap(data(), size()); }
+
+  double mean() const { return empty() ? 0 : eigenArray().sum() / (double)size(); }
+  double std() const {
+    return empty() ? 0 :
+        (eigenArray() - mean()).matrix().norm() / sqrt((double)size());
+  }
+
   // convert to a dense matrix, zero-copy
   shared_ptr<Matrix<V>> matrix(size_t rows = -1, size_t cols = -1);
 

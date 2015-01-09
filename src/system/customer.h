@@ -4,10 +4,12 @@
 #include "system/postoffice.h"
 #include "system/executor.h"
 namespace PS {
+class Postmaster;
 
 // An object shared across multiple nodes.
 class Customer {
  public:
+  friend class Postmaster;
   Customer() : sys_(Postoffice::instance()), exec_(*this) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
@@ -25,14 +27,16 @@ class Customer {
   }
 
   // join the execution thread
-  void stop() { exec_.stop(); exec_thread_->join(); }
+  virtual void stop() { exec_.stop(); exec_thread_->join(); }
 
   // unique name of this customer
+  void setName(const string& name) { name_ = name; }
   const string& name() const { return name_; }
   string& name() { return name_; }
 
   // the uique node id running this customer
   NodeID myNodeID() { return exec_.myNode().id(); }
+  NodeID schedulerID() { return sys_.scheduler().id(); }
   bool IamWorker() { return exec_.myNode().role() == Node::WORKER; }
   bool IamServer() { return exec_.myNode().role() == Node::SERVER; }
 
@@ -43,7 +47,7 @@ class Customer {
   // all child customer names
   const StringList& children() const { return child_customers_; }
 
-  void showMem() { LL << myNodeID() << " is using " << ResUsage::myPhyMem() << " Mbytes memory"; }
+  // void showMem() { LL << myNodeID() << " is using " << ResUsage::myPhyMem() << " Mbytes memory"; }
  protected:
   string name_;
   StringList child_customers_;

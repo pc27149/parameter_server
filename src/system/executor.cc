@@ -3,6 +3,8 @@
 #include <thread>
 namespace PS {
 
+DECLARE_bool(verbose);
+
 void Executor::init(const std::vector<Node>& nodes) {
   // insert virtual group nodes
   for (auto id : {
@@ -62,7 +64,6 @@ void Executor::init(const std::vector<Node>& nodes) {
 void Executor::add(const Node& node) {
   auto id = node.id();
   CHECK_EQ(nodes_.count(id), 0);
-  if (id == Postoffice::instance().myNode().id()) my_node_ = node;
   RNodePtr w(new RNode(node, *this));
   nodes_[id] = w;
 
@@ -89,13 +90,18 @@ string Executor::lastRecvReply() {
 // a simple implementation of the DAG execution engine.
 void Executor::run() {
   while (!done_) {
-    bool do_process = false;
+    bool process = false;
+
+    if (FLAGS_verbose) {
+      LI << obj_.name() << " before entering task loop; recved_msgs_. size [" <<
+        recved_msgs_.size() << "]";
+    }
+
     {
       std::unique_lock<std::mutex> lk(recved_msg_mu_);
       // pickup a message with dependency satisfied
       for (auto it = recved_msgs_.begin(); it != recved_msgs_.end(); ++it) {
         auto& msg = *it;
-        int wait_time = msg->task.wait_time();
         auto sender = rnode(msg->sender);
         if (!sender) {
           LL << my_node_.id() << ": " << msg->sender
@@ -103,16 +109,42 @@ void Executor::run() {
           recved_msgs_.erase(it);
           break;
         }
-        if (!msg->task.request() ||  // ack message
-            wait_time <= Message::kInvalidTime ||  // no dependency constraint
-            sender->tryWaitIncomingTask(wait_time)) {   // dependency constraint satisfied
-          do_process = true;
+        // ack message, no dependency constraint
+        process = !msg->task.request();
+        if (!process) {
+          // check if the dependency constraints are satisfied
+          bool satisfied = true;
+          for (int i = 0; i < msg->task.wait_time_size(); ++i) {
+            int wait_time = msg->task.wait_time(i);
+            if (wait_time > Message::kInvalidTime &&
+                !sender->tryWaitIncomingTask(wait_time)) {
+              satisfied = false;
+            }
+          }
+          process = satisfied;
+        }
+
+        if (process) {
           active_msg_ = msg;
           recved_msgs_.erase(it);
+
+          if (FLAGS_verbose) {
+            LI << obj_.name() << " picked up an active_msg_ from recved_msgs_. " <<
+              "remaining size [" << recved_msgs_.size() << "]; msg [" <<
+              active_msg_->shortDebugString() << "]";
+          }
           break;
         }
       }
-      if (!do_process) { dag_cond_.wait(lk); continue; }
+      if (!process) {
+        if (FLAGS_verbose) {
+          LI << obj_.name() << " picked nothing from recved_msgs_. size [" <<
+            recved_msgs_.size() << "] waiting Executor::accept";
+        }
+
+        dag_cond_.wait(lk);
+        continue;
+      }
     }
     // process the picked message
     bool req = active_msg_->task.request();
@@ -161,7 +193,13 @@ void Executor::run() {
       }
       // run the finishing callback if necessary
       auto o_recver = rnode(original_recver_id);
+      CHECK(o_recver) << "no such node: " << original_recver_id;
       if (o_recver->tryWaitOutgoingTask(t)) {
+        if (FLAGS_verbose) {
+          LI << "Task [" << t << "] completed. msg [" <<
+            active_msg_->shortDebugString() << "]";
+        }
+
         Message::Callback h;
         {
           Lock lk(o_recver->mu_);
@@ -169,6 +207,9 @@ void Executor::run() {
           if (a != o_recver->msg_finish_handle_.end()) h = a->second;
         }
         if (h) h();
+      } else if (FLAGS_verbose) {
+        LI << "Task [" << t << "] still running. msg [" <<
+          active_msg_->shortDebugString() << "]";
       }
     }
   }
@@ -178,7 +219,7 @@ void Executor::run() {
 void Executor::accept(const MessagePtr& msg) {
   Lock l(recved_msg_mu_);
   auto sender = rnode(msg->sender); CHECK(sender) << msg->shortDebugString();
-  sender->cacheKeyRecver(msg);
+  sender->decodeFilter(msg);
   recved_msgs_.push_back(msg);
   dag_cond_.notify_one();
 }

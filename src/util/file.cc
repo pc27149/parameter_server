@@ -13,6 +13,8 @@
 // TODO read and write gz files, see zlib.h. evaluate the performace gain
 namespace PS {
 
+DECLARE_bool(verbose);
+
 File* File::open(const std::string& name, const char* const flag) {
   File* f;
   if (name == "stdin") {
@@ -49,7 +51,14 @@ File* File::open(const DataConfig& name,  const char* const flag) {
   CHECK_EQ(name.file_size(), 1);
   auto filename = name.file(0);
   if (name.has_hdfs()) {
+    // TODO can use -text here, compare which one is better
     string cmd = hadoopFS(name.hdfs()) + " -cat " + filename;
+
+    // .gz
+    if (gzfile(filename)) {
+      cmd += " | gunzip";
+    }
+
     FILE* des = popen(cmd.c_str(), "r");
     if (des == NULL) {
       // LOG(ERROR) << "cannot open " << name.DebugString();
@@ -237,8 +246,10 @@ void writeProtoToFileOrDie(const GProto& proto,
 
 // TODO read home from $HDFS_HOME if empty
 std::string hadoopFS(const HDFSConfig& conf) {
-  return (conf.home() + "/bin/hadoop dfs -D fs.default.name=" + conf.namenode()
-          + " -D hadoop.job.ugi=" + conf.ugi());
+  string str = conf.home() + "/bin/hadoop fs";
+  if (conf.has_namenode()) str += " -D fs.default.name=" + conf.namenode();
+  if (conf.has_ugi()) str += " -D hadoop.job.ugi=" + conf.ugi();
+  return str;
 }
 
 
@@ -262,13 +273,25 @@ std::vector<std::string> readFilenamesInDirectory(const DataConfig& directory) {
   // read hdfs directory
   std::vector<std::string> files;
   string cmd = hadoopFS(directory.hdfs()) + " -ls " + dirname;
+
+  if (FLAGS_verbose) {
+    LI << "readFilenamesInDirectory hdfs ls [" << cmd << "]";
+  }
+
   FILE* des = popen(cmd.c_str(), "r"); CHECK(des);
   char line[10000];
   while (fgets(line, 10000, des)) {
     auto ents = split(std::string(line), ' ', true);
     if (ents.size() != 8) continue;
     if (ents[0][0] == 'd') continue;
-    files.push_back(ents.back());
+
+    // remove tailing line break
+    string this_is_file = ents.back();
+    if ('\n' == this_is_file.back()) {
+      this_is_file.resize(this_is_file.size() - 1);
+    }
+
+    files.push_back(this_is_file);
   }
   pclose(des);
   return files;
@@ -290,6 +313,17 @@ string removeExtension(const string& file) {
   if (elems.back() == "gz" && elems.size() > 2) elems.pop_back();
   elems.pop_back();
   return join(elems, ".");
+}
+
+bool dirExists(const std::string& dir) {
+  struct stat info;
+  if (stat(dir.c_str(), &info) != 0) return false;
+  if (info.st_mode & S_IFDIR) return true;
+  return false;
+}
+
+bool createDir(const std::string& dir) {
+  return mkdir(dir.c_str(), 0755) == 0;
 }
 
 } // namespace PS

@@ -25,7 +25,8 @@
 #include <google/protobuf/extension_set.h>
 #include <google/protobuf/unknown_field_set.h>
 #include "proto/neural_network.pb.h"
-#include "proto/linear_method.pb.h"
+#include "linear_method/linear_method.pb.h"
+#include "graph_partition/graph_partition.pb.h"
 // @@protoc_insertion_point(includes)
 
 namespace PS {
@@ -139,6 +140,15 @@ class AppConfig : public ::google::protobuf::Message {
   inline ::PS::NN::Config* release_neural_network();
   inline void set_allocated_neural_network(::PS::NN::Config* neural_network);
 
+  // optional .PS.GP.Config graph_partition = 5;
+  inline bool has_graph_partition() const;
+  inline void clear_graph_partition();
+  static const int kGraphPartitionFieldNumber = 5;
+  inline const ::PS::GP::Config& graph_partition() const;
+  inline ::PS::GP::Config* mutable_graph_partition();
+  inline ::PS::GP::Config* release_graph_partition();
+  inline void set_allocated_graph_partition(::PS::GP::Config* graph_partition);
+
   // @@protoc_insertion_point(class_scope:PS.AppConfig)
  private:
   inline void set_has_app_name();
@@ -147,6 +157,8 @@ class AppConfig : public ::google::protobuf::Message {
   inline void clear_has_linear_method();
   inline void set_has_neural_network();
   inline void clear_has_neural_network();
+  inline void set_has_graph_partition();
+  inline void clear_has_graph_partition();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -154,9 +166,10 @@ class AppConfig : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedPtrField< ::std::string> parameter_name_;
   ::PS::LM::Config* linear_method_;
   ::PS::NN::Config* neural_network_;
+  ::PS::GP::Config* graph_partition_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(4 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(5 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2fapp_2eproto();
   friend void protobuf_AssignDesc_proto_2fapp_2eproto();
@@ -359,6 +372,44 @@ inline void AppConfig::set_allocated_neural_network(::PS::NN::Config* neural_net
     set_has_neural_network();
   } else {
     clear_has_neural_network();
+  }
+}
+
+// optional .PS.GP.Config graph_partition = 5;
+inline bool AppConfig::has_graph_partition() const {
+  return (_has_bits_[0] & 0x00000010u) != 0;
+}
+inline void AppConfig::set_has_graph_partition() {
+  _has_bits_[0] |= 0x00000010u;
+}
+inline void AppConfig::clear_has_graph_partition() {
+  _has_bits_[0] &= ~0x00000010u;
+}
+inline void AppConfig::clear_graph_partition() {
+  if (graph_partition_ != NULL) graph_partition_->::PS::GP::Config::Clear();
+  clear_has_graph_partition();
+}
+inline const ::PS::GP::Config& AppConfig::graph_partition() const {
+  return graph_partition_ != NULL ? *graph_partition_ : *default_instance_->graph_partition_;
+}
+inline ::PS::GP::Config* AppConfig::mutable_graph_partition() {
+  set_has_graph_partition();
+  if (graph_partition_ == NULL) graph_partition_ = new ::PS::GP::Config;
+  return graph_partition_;
+}
+inline ::PS::GP::Config* AppConfig::release_graph_partition() {
+  clear_has_graph_partition();
+  ::PS::GP::Config* temp = graph_partition_;
+  graph_partition_ = NULL;
+  return temp;
+}
+inline void AppConfig::set_allocated_graph_partition(::PS::GP::Config* graph_partition) {
+  delete graph_partition_;
+  graph_partition_ = graph_partition;
+  if (graph_partition) {
+    set_has_graph_partition();
+  } else {
+    clear_has_graph_partition();
   }
 }
 

@@ -35,20 +35,20 @@ class SlotReader {
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
   size_t nnzEle(int slot_id) const;
-  bool readOneFile(const DataConfig& data);
+  bool readOneFile(const DataConfig& data, int ith_file);
   string cache_;
   DataConfig data_;
-  bool dump_to_disk_;
+  // bool dump_to_disk_;
   ExampleInfo info_;
   std::unordered_map<int, SlotInfo> slot_info_;
   std::mutex mu_;
-
+  size_t loaded_file_count_;
+  std::vector<uint32> num_ex_;
   std::unordered_map<int, SArray<size_t>> offset_cache_;
   std::unordered_map<int, SArray<uint64>> index_cache_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) const {
-  // TODO support cache (but this is a template function...)
   SArray<V> val;
   if (nnzEle(slot_id) == 0) return val;
   for (int i = 0; i < data_.file_size(); ++i) {

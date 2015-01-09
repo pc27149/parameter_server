@@ -2,21 +2,30 @@
 #include <string.h>
 #include <zmq.h>
 #include "base/shared_array_inl.h"
+#include "util/local_machine.h"
 
 namespace PS {
 
-DEFINE_string(my_node, "", "my node");
-DEFINE_string(scheduler, "", "the scheduler node");
+DEFINE_string(my_node, "role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'", "my node");
+DEFINE_string(scheduler, "role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'", "the scheduler node");
 DEFINE_string(server_master, "", "the master of servers");
-DEFINE_int32(num_retries, 3, "number of retries for zmq");
-DEFINE_bool(compress_message, true, "");
 DEFINE_bool(print_van, false, "");
+DEFINE_int32(bind_to, 0, "binding port");
+DEFINE_int32(my_rank, -1, "my rank among MPI peers");
+DEFINE_string(interface, "", "network interface");
+
+DECLARE_int32(num_workers);
+DECLARE_int32(num_servers);
 
 void Van::init() {
-  my_node_ = parseNode(FLAGS_my_node);
   scheduler_ = parseNode(FLAGS_scheduler);
+  if (FLAGS_my_rank < 0) {
+    my_node_ = parseNode(FLAGS_my_node);
+  } else {
+    my_node_ = assembleMyNode();
+  }
+  // LI << "I am [" << my_node_.ShortDebugString() << "]; pid:" << getpid();
 
-  num_retries_ = std::max(0, FLAGS_num_retries);
   context_ = zmq_ctx_new();
   // TODO the following does not work...
   // zmq_ctx_set(context_, ZMQ_MAX_SOCKETS, 1000000);
@@ -43,9 +52,15 @@ void Van::bind() {
   receiver_ = zmq_socket(context_, ZMQ_ROUTER);
   CHECK(receiver_ != NULL)
       << "create receiver socket failed: " << zmq_strerror(errno);
-  CHECK(my_node_.has_port()) << my_node_.ShortDebugString();
-  string addr = "tcp://*:" + std::to_string(my_node_.port());
-  // string addr = "tcp://" + address(my_node_);
+  string addr = "tcp://*:";
+  if (FLAGS_bind_to) {
+    addr += std::to_string(FLAGS_bind_to);
+  }
+  else {
+    CHECK(my_node_.has_port()) << my_node_.ShortDebugString();
+    addr += std::to_string(my_node_.port());
+    // string addr = "tcp://" + address(my_node_);
+  }
   CHECK(zmq_bind(receiver_, addr.c_str()) == 0)
       << "bind to " << addr << " failed: " << zmq_strerror(errno);
 
@@ -54,7 +69,7 @@ void Van::bind() {
   }
 }
 
-Status Van::connect(Node const& node) {
+Status Van::connect(const Node& node) {
   CHECK(node.has_id()) << node.ShortDebugString();
   CHECK(node.has_port()) << node.ShortDebugString();
   CHECK(node.has_hostname()) << node.ShortDebugString();
@@ -79,6 +94,7 @@ Status Van::connect(Node const& node) {
     return Status:: NetError(
         "connect to " + addr + " failed: " + zmq_strerror(errno));
   senders_[id] = sender;
+  hostnames_[id] = node.hostname();
 
   if (FLAGS_print_van) {
     debug_out_ << my_node_.id() << ": connect to " << addr << std::endl;
@@ -88,7 +104,7 @@ Status Van::connect(Node const& node) {
 
 // TODO use zmq_msg_t to allow zero_copy send
 // btw, it is not thread safe
-Status Van::send(const MessageCPtr& msg) {
+Status Van::send(const MessagePtr& msg, size_t* send_bytes) {
 
   // find the socket
   NodeID id = msg->recver;
@@ -97,82 +113,70 @@ Status Van::send(const MessageCPtr& msg) {
     return Status::NotFound("there is no socket to node " + (id));
   void *socket = it->second;
 
-  // fill data
-  auto task = msg->task;
-  task.clear_uncompressed_size();
+  // double check
   bool has_key = !msg->key.empty();
-  std::vector<SArray<char> > data;
-  if (FLAGS_compress_message) {
-    if (has_key) {
-      data.push_back(msg->key.compressTo());
-      task.add_uncompressed_size(msg->key.size());
-    }
-    for (auto& m : msg->value) {
-      if (m.empty()) continue;
-      data.push_back(m.compressTo());
-      task.add_uncompressed_size(m.size());
-    }
-  } else {
-    if (has_key) data.push_back(msg->key);
-    for (auto& m : msg->value) {
-      if (m.empty()) continue;
-      data.push_back(m);
-    }
-  }
+  msg->task.set_has_key(has_key);
+  int n = has_key + msg->value.size();
 
   // send task
+  size_t data_size = 0;
   string str;
-  task.set_has_key(has_key);
-  CHECK(task.SerializeToString(&str))
-      << "failed to serialize " << task.ShortDebugString();
+  CHECK(msg->task.SerializeToString(&str))
+      << "failed to serialize " << msg->task.ShortDebugString();
   int tag = ZMQ_SNDMORE;
-  if (data.size() == 0) tag = 0; // ZMQ_DONTWAIT;
+  if (n == 0) tag = 0; // ZMQ_DONTWAIT;
   while (true) {
     if (zmq_send(socket, str.c_str(), str.size(), tag) == str.size()) break;
-    if (errno == EINTR) continue;  // maybe interupted by google profiler
+    if (errno == EINTR) continue;  // may be interupted by google profiler
     return Status::NetError(
         "failed to send mailer to node " + (id) + zmq_strerror(errno));
   }
-  data_sent_ += str.size();
+  data_size += str.size();
 
-  // send key and value
-  for (int i = 0; i < data.size(); ++i) {
-    const auto& raw = data[i];
-    if (i == data.size() - 1) tag = 0; // ZMQ_DONTWAIT;
-
+  // send data
+  for (int i = 0; i < n; ++i) {
+    const auto& raw = (has_key && i == 0) ? msg->key : msg->value[i-has_key];
+    if (i == n - 1) tag = 0; // ZMQ_DONTWAIT;
     while (true) {
       if (zmq_send(socket, raw.data(), raw.size(), tag) == raw.size()) break;
-      if (errno == EINTR) continue;  // maybe interupted by google profiler
+      if (errno == EINTR) continue;  // may be interupted by google profiler
       return Status::NetError(
           "failed to send mailer to node " + (id) + zmq_strerror(errno));
     }
-    data_sent_ += raw.size();
+    data_size += raw.size();
   }
 
+  // statistics
+  *send_bytes += data_size;
+  if (hostnames_[id] == my_node_.hostname()) {
+    sent_to_local_ += data_size;
+  } else {
+    sent_to_others_ += data_size;
+  }
   if (FLAGS_print_van) {
-    debug_out_ << "\tSND " << msg->shortDebugString()<< std::endl;
+    debug_out_ << "|>>>   " << msg->shortDebugString()<< std::endl;
   }
   return Status::OK();
 }
 
 // TODO Zero copy
-Status Van::recv(const MessagePtr& msg) {
-  msg->key = SArray<char>();
-  msg->value.clear();
+Status Van::recv(const MessagePtr& msg, size_t* recv_bytes) {
+  size_t data_size = 0;
+  msg->clearData();
   NodeID sender;
   for (int i = 0; ; ++i) {
     zmq_msg_t zmsg;
     CHECK(zmq_msg_init(&zmsg) == 0) << zmq_strerror(errno);
     while (true) {
       if (zmq_msg_recv(&zmsg, receiver_, 0) != -1) break;
-      if (errno == EINTR) continue;  // maybe interupted by google profiler
+      if (errno == EINTR) continue;  // may be interupted by google profiler
       return Status::NetError(
           "recv message failed: " + std::string(zmq_strerror(errno)));
     }
     char* buf = (char *)zmq_msg_data(&zmsg);
     CHECK(buf != NULL);
     size_t size = zmq_msg_size(&zmsg);
-    data_received_ += size;
+    data_size += size;
     if (i == 0) {
       // identify
       sender = id(std::string(buf, size));
@@ -181,21 +185,11 @@ Status Van::recv(const MessagePtr& msg) {
     } else if (i == 1) {
       // task
       CHECK(msg->task.ParseFromString(std::string(buf, size)))
-          << "parse string failed";
+          << "parse string from " << sender << " I'm " << my_node_.id() << " "
+          << size;
     } else {
-      // key and value
-      SArray<char> data;
-      int n = msg->task.uncompressed_size_size();
-      if (n > 0) {
-        // data are compressed
-        CHECK_GT(n, i - 2);
-        data.resize(msg->task.uncompressed_size(i-2)+16);
-        data.uncompressFrom(buf, size);
-      } else {
-        // data are not compressed
-        // data = SArray<char>(buf, buf+size);
-        data.copyFrom(buf, size);
-      }
+      // data
+      SArray<char> data; data.copyFrom(buf, size);
       if (i == 2 && msg->task.has_key()) {
         msg->key = data;
       } else {
@@ -206,8 +200,14 @@ Status Van::recv(const MessagePtr& msg) {
     if (!zmq_msg_more(&zmsg)) { CHECK_GT(i, 0); break; }
   }
 
+  *recv_bytes += data_size;
+  if (hostnames_[sender] == my_node_.hostname()) {
+    received_from_local_ += data_size;
+  } else {
+    received_from_others_ += data_size;
+  }
   if (FLAGS_print_van) {
-    debug_out_ << "\tRCV " << msg->shortDebugString() << std::endl;
+    debug_out_ << "|<<<   " << msg->shortDebugString() << std::endl;
   }
   return Status::OK();;
 }
@@ -215,9 +215,56 @@ Status Van::recv(const MessagePtr& msg) {
 void Van::statistic() {
   if (my_node_.role() == Node::UNUSED || my_node_.role() == Node::SCHEDULER) return;
   auto gb = [](size_t x) { return  x / 1e9; };
-
-  LI << my_node_.id() << " sent " << gb(data_sent_)
-     << " Gbyte, received " << gb(data_received_) << " Gbyte";
+  LI << my_node_.id()
+     << " sent " << gb(sent_to_local_ + sent_to_others_)
+     << " (local " << gb(sent_to_local_) << ") Gbyte,"
+     << " received " << gb(received_from_local_ + received_from_others_)
+     << " (local " << gb(received_from_local_) << ") Gbyte";
 }
+
+Node Van::assembleMyNode() {
+  if (0 == FLAGS_my_rank) {
+    return scheduler_;
+  }
+
+  Node ret_node;
+  // role and id
+  if (FLAGS_my_rank <= FLAGS_num_workers) {
+    ret_node.set_role(Node::WORKER);
+    ret_node.set_id("W" + std::to_string(FLAGS_my_rank - 1));
+  } else if (FLAGS_my_rank <= FLAGS_num_workers + FLAGS_num_servers) {
+    ret_node.set_role(Node::SERVER);
+    ret_node.set_id("S" + std::to_string(FLAGS_my_rank - FLAGS_num_workers - 1));
+  } else {
+    ret_node.set_role(Node::UNUSED);
+    ret_node.set_id("U" + std::to_string(
+      FLAGS_my_rank - FLAGS_num_workers - FLAGS_num_servers - 1));
+  }
+
+  // IP, port and interface
+  string ip;
+  string interface = FLAGS_interface;
+  unsigned short port;
+
+  if (interface.empty()) {
+    LocalMachine::pickupAvailableInterfaceAndIP(interface, ip);
+  } else {
+    ip = LocalMachine::IP(interface);
+  }
+  CHECK(!ip.empty()) << "failed to got ip";
+  CHECK(!interface.empty()) << "failed to got the interface";
+  port = LocalMachine::pickupAvailablePort();
+  CHECK_NE(port, 0) << "failed to get port";
+  ret_node.set_hostname(ip);
+  ret_node.set_port(static_cast<int32>(port));
+
+  return ret_node;
+}
+
+bool Van::connected(const Node& node) {
+  auto it = senders_.find(node.id());
+  return it != senders_.end();
+}
+
 
 } // namespace PS

@@ -1,123 +1,97 @@
 CC = g++
 
-OPT = -O3 -ggdb
 # OPT = -O0 -ggdb
+OPT = -O3 -ggdb
 
+### third_party path
+THIRD_PARTY=$(shell cd ..;pwd)/third_party
+THIRD_BIN=$(THIRD_PARTY)/bin
+THIRD_INC=$(THIRD_PARTY)/include
+THIRD_LIB=$(THIRD_PARTY)/lib
+
+WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare #-Wconversion
+INCPATH = -I. -I${THIRD_INC}
+CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH)
+
+### staticly link third party libaries
+STATIC_THIRD_LIB=0
+ifeq ($(STATIC_THIRD_LIB), 1)
+THIRD_LIBS=$(addprefix $(THIRD_LIB)/, libgflags.a libzmq.a libprotobuf.a libglog.a libz.a  libsnappy.a)
+else
+THIRD_LIBS=-L$(THIRD_LIB) -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy
+endif
+
+### staticly link gcc
+STATIC_GCC=0
+ifeq (${STATIC_GCC}, 1)
+	LDFLAGS += -static-libgcc -static-libstdc++
+endif
+
+### all
 BIN = ../bin
 LIB = ../lib
+LIBS = $(addprefix $(LIB)/, liblm.a libgp.a libps.a libprotos.a)
+LDFLAGS += -L$(LIB) $(LIBS) $(THIRD_LIBS) -lpthread -lrt
 
-ifndef THIRD
-THIRD=$(shell cd ..;pwd)/third_party
-endif
-THIRD_BIN=$(THIRD)/bin
-THIRD_INC=$(THIRD)/include
-THIRD_LIB=$(THIRD)/lib
-
-#-Wconversion -fPIC
-WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare #-fno-omit-frame-pointer
-INCPATH = -I. -I${THIRD_INC}
-
-# STATIC=1
-ifeq (${STATIC}, 1)
-# TODO a lot of warning on mac with llvm
-    CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
-else
-    CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
-endif
-
-# -ltcmalloc_and_profiler
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz \
--lsnappy -lm -lpthread -lrt  -lstdc++
-GTEST = -lgtest_main -lgtest
-
-OBJS = $(SRCS:.cc=.o)
-DEPS = $(SRCS:.cc=.d)
-PROTOS= $(wildcard proto/*.proto)
-PROTOS_CC = $(PROTOS:.proto=.pb.cc)
-SRCS = $(PROTOS_CC) \
-	util/crc32c.cc \
-	util/MurmurHash3.cc \
-	util/file.cc \
-	util/filelinereader.cc \
-	util/threadpool.cc \
-	system/van.cc \
-	system/message.cc \
-	system/postoffice.cc \
-	system/yellow_pages.cc \
-	system/remote_node.cc \
-	system/executor.cc \
-	system/app.cc \
-	data/common.cc \
-	data/text_parser.cc \
-	data/example_parser.cc \
-	data/slot_reader.cc \
-	linear_method/linear_method.cc \
-	linear_method/batch_solver.cc \
-	linear_method/darling.cc
-
-
-TESTS = \
-	slot_reader_test \
-	matrix_io_test \
-	localizer_test \
-	countmin_test \
-	snappy_test \
-	shared_array_test \
-	grad_desc_test \
-	# sparse_matrix_perf \
-	auc_test \
-	io_test \
-	bitmap_test \
-	eigen3_test \
-	sparse_matrix_test \
-	auc_layer_test \
-	# double_test \
-	# aggregated_gradient_test \
-	# strtonum_test
-	#partition_test
-	# van_test \
-	# customer_test \
-	# vectors_test \
-        sparse_matrix_multi_thread_perf \
-	fault_tolerance_press \
-
-all: dir $(addprefix $(BIN)/, ps) # text2proto
-data: $(addprefix $(BIN)/, showins proto2bin)
-test: $(addprefix $(BIN)/, $(TESTS))
-
-# t: ../bin/slot_reader_test
-t: ../bin/localizer_test
-
-dir:
-	mkdir -p $(LIB)
-	mkdir -p $(BIN)
+all: dir $(BIN)/ps
 clean:
 	rm -rf */*.o */*.d */*/*.o */*/*.d proto/*.cc $(BIN) $(LIB)
 
-%.o: %.cc %.h
-	$(CC) $(CFLAGS) -c $< -o $@
+-include */BUILD
 
-%.d: %.cc %.h
-	$(CC) $(CFLAGS) -MM -MT $*.o $< > $@
+#$(PROTOS_CC) \
+### system
+SYS_SRCS = \
+	$(addprefix system/, $(system_srcs)) \
+	$(addprefix util/, $(util_srcs)) \
+	$(addprefix data/, $(data_srcs)) \
+	$(addprefix filter/, $(filter_srcs))
+SYS_OBJS = $(SYS_SRCS:.cc=.o)
+$(LIB)/libps.a: $(SYS_OBJS)
+	ar crv $@ $(SYS_OBJS)
 
-$(BIN)/%: data/%.cc $(LIB)/libps.a
-	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $@
+### linear methods
+LM_SRCS = $(addprefix linear_method/, $(linear_method_srcs))
+LM_OBJS = $(LM_SRCS:.cc=.o)
+$(LIB)/liblm.a: $(LM_OBJS)
+	ar crv $@ $(LM_OBJS)
 
-$(BIN)/%: test/%.cc $(LIB)/libps.a
-	$(CC) $(CFLAGS) $< $(GTEST) $(LDFLAGS) -o $@
+### graph partitioning
+GP_SRCS = $(addprefix graph_partition/, $(graph_partition_srcs))
+GP_OBJS = $(GP_SRCS:.cc=.o)
+$(LIB)/libgp.a: $(GP_OBJS)
+	ar crv $@ $(GP_OBJS)
 
-./proto/%.pb.cc ./proto/%.pb.h : ./proto/%.proto
+
+### protobuf
+PROTOS= $(wildcard */*.proto)
+PROTOS_CC = $(PROTOS:.proto=.pb.cc)
+PROTOS_OBJS = $(PROTOS:.proto=.pb.o)
+%.pb.cc %.pb.h : %.proto
 	${THIRD_BIN}/protoc --cpp_out=. $<
+$(LIB)/libprotos.a: $(PROTOS_OBJS)
+	ar crv $@ $(PROTOS_OBJS)
 
+### dependencies
+ALL_SRCS = $(wildcard */*.cc)
+DEPS = $(ALL_SRCS:.cc=.d)
 -include $(DEPS)
 
-# static link, works fine for both mac and linux.
-$(LIB)/libps.a: $(OBJS) #gtest
-	ar crv $@ $(OBJS)
+### rules
+test: $(addprefix $(BIN)/, $(TESTS))
+%.o: %.cc
+	$(CC) $(CFLAGS) -c $< -o $@
+%.d: %.cc
+	$(CC) $(CFLAGS) -MM -MT $*.o $< > $@
+$(BIN)/%: test/%.cc $(LIBS)
+	$(CC) $(CFLAGS) $< -lgtest_main -lgtest $(LDFLAGS) -o $@
+$(BIN)/ps: main.cc $(LIBS)
+	$(CC) $(CFLAGS) main.cc $(LDFLAGS) -o $@
 
-$(BIN)/ps: ps.cc $(LIB)/libps.a
-	$(CC) $(CFLAGS) ps.cc $(LDFLAGS) -o $@
 
-# =====================
-
-# -Wl,-rpath=../lib $(LIB)/libps.so
+### make directories
+dir: $(LIB) $(BIN)
+$(LIB):
+	mkdir -p $(LIB)
+$(BIN):
+	mkdir -p $(BIN)

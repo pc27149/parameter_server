@@ -1,19 +1,14 @@
 #pragma once
 #include "system/customer.h"
 #include "parameter/frequency_filter.h"
+#include "proto/common.pb.h"
 namespace PS {
 
-#define USING_SHARED_PARAMETER                  \
-  using Customer::taskpool;                     \
-  using Customer::myNodeID;                     \
-  using SharedParameter<K,V>::get;              \
-  using SharedParameter<K,V>::set;              \
-  using SharedParameter<K,V>::myKeyRange;       \
-  using SharedParameter<K,V>::keyRange;         \
-  using SharedParameter<K,V>::sync
+template <typename K> class SharedParameter;
+template <typename K> using SharedParameterPtr = std::shared_ptr<SharedParameter<K>>;
 
 // the base class of shared parameters
-template <typename K, typename V>
+template <typename K>
 class SharedParameter : public Customer {
  public:
   // convenient wrappers of functions in remote_node.h
@@ -42,7 +37,9 @@ class SharedParameter : public Customer {
     taskpool(node)->finishIncomingTask(time);
   }
 
-  void clearKeyFilter(int chl) { key_filter_[chl].clear(); }
+  // FreqencyFilter<K,V>& keyFilter(int chl) { return key_filter_[chl]; }
+  // void setKeyFilterIgnoreChl(bool flag) { key_filter_ignore_chl_ = flag; }
+  void clearTailFilter(int chl) { key_filter_[chl].clear(); }
 
   // process a received message, will called by the thread of executor
   void process(const MessagePtr& msg);
@@ -64,13 +61,13 @@ class SharedParameter : public Customer {
   // the message contains the backup KV pairs sent by the master node of the key
   // segment to its replica node. merge these pairs into my replica, say
   // replica_[msg->sender] = ...
-  virtual void setReplica(const MessagePtr& msg) = 0; //
+  virtual void setReplica(const MessagePtr& msg) { }
   // retrieve the replica. a new server node replacing a dead server will first
   // ask for the dead's replica node for the data
-  virtual void getReplica(const MessagePtr& msg)  = 0;
+  virtual void getReplica(const MessagePtr& msg) { }
   // a new server node fill its own datastructure via the the replica data from
   // the dead's replica node
-  virtual void recoverFrom(const MessagePtr& msg) = 0; //
+  virtual void recoverFrom(const MessagePtr& msg) { }
   // recover from a replica node
   void recover(Range<K> range);
 
@@ -82,15 +79,16 @@ class SharedParameter : public Customer {
     return Range<K>(exec_.rnode(id)->keyRange());
   }
 
- private:
-  std::unordered_map<int, FreqencyFilter<K>> key_filter_;
+ protected:
+  std::unordered_map<int, FreqencyFilter<K, uint8>> key_filter_;
+  bool key_filter_ignore_chl_ = false;
 
   // add key_range in the future, it is not necessary now
   std::unordered_map<NodeID, std::vector<int> > clock_replica_;
 };
 
-template <typename K, typename V>
-void SharedParameter<K,V>::process(const MessagePtr& msg) {
+template <typename K>
+void SharedParameter<K>::process(const MessagePtr& msg) {
   bool req = msg->task.request();
   int chl = msg->task.key_channel();
   auto call = get(msg);
@@ -102,6 +100,8 @@ void SharedParameter<K,V>::process(const MessagePtr& msg) {
     reply->task.set_request(false);
     std::swap(reply->sender, reply->recver);
   }
+
+  this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
   // process
   if (call.replica()) {
     if (pull && !req && Range<K>(msg->task.key_range()) == myKeyRange()) {
@@ -111,20 +111,31 @@ void SharedParameter<K,V>::process(const MessagePtr& msg) {
     } else if (pull && req) {
       getReplica(reply);
     }
-  } else if (call.insert_key_freq()) {
-    if (push && req && !msg->value.empty()) {
-      key_filter_[chl].insertKeys(
-          SArray<K>(msg->key), SArray<uint32>(msg->value[0]),
-          call.countmin_n(), call.countmin_k());
+  } else if (call.has_tail_filter()) {
+    if (key_filter_ignore_chl_) chl = 0;
+    auto cmd = call.tail_filter();
+    // push the key count
+    if (cmd.insert_count() && req && !msg->key.empty()) {
+      CHECK(!msg->value.empty());
+      auto& filter = key_filter_[chl];
+      if (filter.empty()) {
+        double w = (double)FLAGS_num_workers;
+        filter.resize(w*cmd.countmin_n()/log(w+1), cmd.countmin_k());
+      }
+      filter.insertKeys(SArray<K>(msg->key), SArray<uint8>(msg->value[0]));
     }
-  } else if (call.has_query_key_freq()) {
-    if (pull && req) {
-      reply->key = key_filter_[chl].queryKeys(
-          SArray<K>(msg->key), call.query_key_freq());
-      // LL << reply->key.size();
-    } else if (pull && !req) {
-      setValue(msg);
-      // LL << msg->key.size();
+    // pull the filtered keys
+    if (cmd.has_query_key() && pull) {
+      if (req) {
+        reply->clearData();
+        reply->setKey(key_filter_[chl].queryKeys(
+            SArray<K>(msg->key), cmd.query_key()));
+        if (cmd.has_query_value()) {
+          getValue(reply);
+        }
+      } else {
+        setValue(msg);
+      }
     }
   } else {
     if ((push && req) || (pull && !req)) {
@@ -133,11 +144,44 @@ void SharedParameter<K,V>::process(const MessagePtr& msg) {
       getValue(reply);
     }
   }
+  this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
   // reply if necessary
   if (pull && req) {
-    taskpool(reply->recver)->cacheKeySender(reply);
+    taskpool(reply->recver)->encodeFilter(reply);
     sys_.queue(reply);
     msg->replied = true;
+  }
+}
+
+#define USING_SHARED_PARAMETER                  \
+  using Customer::taskpool;                     \
+  using Customer::myNodeID;                     \
+  using SharedParameter<K>::get;                \
+  using SharedParameter<K>::set;                \
+  using SharedParameter<K>::myKeyRange;         \
+  using SharedParameter<K>::keyRange;           \
+  using SharedParameter<K>::sync
+
+template<typename V>
+void compAssOp(V& right, V left, Operator op) {
+  switch (op) {
+    case Operator::PLUS:
+      right += left; break;
+    case Operator::MINUS:
+      right -= left; break;
+    case Operator::TIMES:
+      right *= left; break;
+    case Operator::DIVIDE:
+      right /= left; break;
+    case Operator::AND:
+      right &= left; break;
+    case Operator::OR:
+      right |= left; break;
+    case Operator::XOR:
+      right ^= left; break;
+    default:
+      break;
   }
 }
 

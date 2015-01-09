@@ -28,7 +28,11 @@
 #include "proto/node.pb.h"
 #include "proto/range.pb.h"
 #include "proto/app.pb.h"
-#include "proto/linear_method.pb.h"
+#include "proto/filter.pb.h"
+#include "proto/common.pb.h"
+#include "linear_method/linear_method.pb.h"
+#include "graph_partition/graph_partition.pb.h"
+#include "parameter/shared_parameter.pb.h"
 // @@protoc_insertion_point(includes)
 
 namespace PS {
@@ -41,8 +45,6 @@ void protobuf_ShutdownFile_proto_2ftask_2eproto();
 class Task;
 class ManageNode;
 class ManageApp;
-class Timestamp;
-class CallSharedPara;
 class CallSketch;
 class SketchResponse;
 
@@ -51,11 +53,12 @@ enum Task_Type {
   Task_Type_TERMINATE_CONFIRM = 2,
   Task_Type_REPLY = 3,
   Task_Type_MANAGE = 4,
-  Task_Type_CALL_CUSTOMER = 5
+  Task_Type_CALL_CUSTOMER = 5,
+  Task_Type_HEARTBEATING = 6
 };
 bool Task_Type_IsValid(int value);
 const Task_Type Task_Type_Type_MIN = Task_Type_TERMINATE;
-const Task_Type Task_Type_Type_MAX = Task_Type_CALL_CUSTOMER;
+const Task_Type Task_Type_Type_MAX = Task_Type_HEARTBEATING;
 const int Task_Type_Type_ARRAYSIZE = Task_Type_Type_MAX + 1;
 
 const ::google::protobuf::EnumDescriptor* Task_Type_descriptor();
@@ -107,25 +110,6 @@ inline bool ManageApp_Command_Parse(
     const ::std::string& name, ManageApp_Command* value) {
   return ::google::protobuf::internal::ParseNamedEnum<ManageApp_Command>(
     ManageApp_Command_descriptor(), name, value);
-}
-enum CallSharedPara_Command {
-  CallSharedPara_Command_PUSH = 1,
-  CallSharedPara_Command_PULL = 2
-};
-bool CallSharedPara_Command_IsValid(int value);
-const CallSharedPara_Command CallSharedPara_Command_Command_MIN = CallSharedPara_Command_PUSH;
-const CallSharedPara_Command CallSharedPara_Command_Command_MAX = CallSharedPara_Command_PULL;
-const int CallSharedPara_Command_Command_ARRAYSIZE = CallSharedPara_Command_Command_MAX + 1;
-
-const ::google::protobuf::EnumDescriptor* CallSharedPara_Command_descriptor();
-inline const ::std::string& CallSharedPara_Command_Name(CallSharedPara_Command value) {
-  return ::google::protobuf::internal::NameOfEnum(
-    CallSharedPara_Command_descriptor(), value);
-}
-inline bool CallSharedPara_Command_Parse(
-    const ::std::string& name, CallSharedPara_Command* value) {
-  return ::google::protobuf::internal::ParseNamedEnum<CallSharedPara_Command>(
-    CallSharedPara_Command_descriptor(), name, value);
 }
 enum CallSketch_Command {
   CallSketch_Command_PREPARE_DATA = 1,
@@ -209,6 +193,7 @@ class Task : public ::google::protobuf::Message {
   static const Type REPLY = Task_Type_REPLY;
   static const Type MANAGE = Task_Type_MANAGE;
   static const Type CALL_CUSTOMER = Task_Type_CALL_CUSTOMER;
+  static const Type HEARTBEATING = Task_Type_HEARTBEATING;
   static inline bool Type_IsValid(int value) {
     return Task_Type_IsValid(value);
   }
@@ -239,17 +224,24 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::Task_Type type() const;
   inline void set_type(::PS::Task_Type value);
 
-  // required bool request = 2 [default = false];
+  // optional bool request = 2 [default = false];
   inline bool has_request() const;
   inline void clear_request();
   static const int kRequestFieldNumber = 2;
   inline bool request() const;
   inline void set_request(bool value);
 
-  // required string customer = 3;
+  // optional bool do_not_reply = 3 [default = false];
+  inline bool has_do_not_reply() const;
+  inline void clear_do_not_reply();
+  static const int kDoNotReplyFieldNumber = 3;
+  inline bool do_not_reply() const;
+  inline void set_do_not_reply(bool value);
+
+  // optional string customer = 4;
   inline bool has_customer() const;
   inline void clear_customer();
-  static const int kCustomerFieldNumber = 3;
+  static const int kCustomerFieldNumber = 4;
   inline const ::std::string& customer() const;
   inline void set_customer(const ::std::string& value);
   inline void set_customer(const char* value);
@@ -258,26 +250,24 @@ class Task : public ::google::protobuf::Message {
   inline ::std::string* release_customer();
   inline void set_allocated_customer(::std::string* customer);
 
-  // optional int32 time = 4;
+  // optional int32 time = 5;
   inline bool has_time() const;
   inline void clear_time();
-  static const int kTimeFieldNumber = 4;
+  static const int kTimeFieldNumber = 5;
   inline ::google::protobuf::int32 time() const;
   inline void set_time(::google::protobuf::int32 value);
 
-  // optional int32 wait_time = 5 [default = -1];
-  inline bool has_wait_time() const;
+  // repeated int32 wait_time = 6;
+  inline int wait_time_size() const;
   inline void clear_wait_time();
-  static const int kWaitTimeFieldNumber = 5;
-  inline ::google::protobuf::int32 wait_time() const;
-  inline void set_wait_time(::google::protobuf::int32 value);
-
-  // optional bool has_key = 6 [default = false];
-  inline bool has_has_key() const;
-  inline void clear_has_key();
-  static const int kHasKeyFieldNumber = 6;
-  inline bool has_key() const;
-  inline void set_has_key(bool value);
+  static const int kWaitTimeFieldNumber = 6;
+  inline ::google::protobuf::int32 wait_time(int index) const;
+  inline void set_wait_time(int index, ::google::protobuf::int32 value);
+  inline void add_wait_time(::google::protobuf::int32 value);
+  inline const ::google::protobuf::RepeatedField< ::google::protobuf::int32 >&
+      wait_time() const;
+  inline ::google::protobuf::RepeatedField< ::google::protobuf::int32 >*
+      mutable_wait_time();
 
   // optional .PS.PbRange key_range = 7;
   inline bool has_key_range() const;
@@ -288,38 +278,48 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::PbRange* release_key_range();
   inline void set_allocated_key_range(::PS::PbRange* key_range);
 
-  // optional uint32 key_signature = 8;
-  inline bool has_key_signature() const;
-  inline void clear_key_signature();
-  static const int kKeySignatureFieldNumber = 8;
-  inline ::google::protobuf::uint32 key_signature() const;
-  inline void set_key_signature(::google::protobuf::uint32 value);
-
-  // optional int32 key_channel = 9;
+  // optional int32 key_channel = 8;
   inline bool has_key_channel() const;
   inline void clear_key_channel();
-  static const int kKeyChannelFieldNumber = 9;
+  static const int kKeyChannelFieldNumber = 8;
   inline ::google::protobuf::int32 key_channel() const;
   inline void set_key_channel(::google::protobuf::int32 value);
 
-  // optional bool erase_key_cache = 10 [default = false];
-  inline bool has_erase_key_cache() const;
-  inline void clear_erase_key_cache();
-  static const int kEraseKeyCacheFieldNumber = 10;
-  inline bool erase_key_cache() const;
-  inline void set_erase_key_cache(bool value);
+  // optional bool has_key = 9 [default = false];
+  inline bool has_has_key() const;
+  inline void clear_has_key();
+  static const int kHasKeyFieldNumber = 9;
+  inline bool has_key() const;
+  inline void set_has_key(bool value);
 
-  // repeated uint64 uncompressed_size = 11;
-  inline int uncompressed_size_size() const;
-  inline void clear_uncompressed_size();
-  static const int kUncompressedSizeFieldNumber = 11;
-  inline ::google::protobuf::uint64 uncompressed_size(int index) const;
-  inline void set_uncompressed_size(int index, ::google::protobuf::uint64 value);
-  inline void add_uncompressed_size(::google::protobuf::uint64 value);
-  inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >&
-      uncompressed_size() const;
-  inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
-      mutable_uncompressed_size();
+  // optional .PS.DataType key_type = 13;
+  inline bool has_key_type() const;
+  inline void clear_key_type();
+  static const int kKeyTypeFieldNumber = 13;
+  inline ::PS::DataType key_type() const;
+  inline void set_key_type(::PS::DataType value);
+
+  // repeated .PS.DataType value_type = 14;
+  inline int value_type_size() const;
+  inline void clear_value_type();
+  static const int kValueTypeFieldNumber = 14;
+  inline ::PS::DataType value_type(int index) const;
+  inline void set_value_type(int index, ::PS::DataType value);
+  inline void add_value_type(::PS::DataType value);
+  inline const ::google::protobuf::RepeatedField<int>& value_type() const;
+  inline ::google::protobuf::RepeatedField<int>* mutable_value_type();
+
+  // repeated .PS.FilterConfig filter = 12;
+  inline int filter_size() const;
+  inline void clear_filter();
+  static const int kFilterFieldNumber = 12;
+  inline const ::PS::FilterConfig& filter(int index) const;
+  inline ::PS::FilterConfig* mutable_filter(int index);
+  inline ::PS::FilterConfig* add_filter();
+  inline const ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig >&
+      filter() const;
+  inline ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig >*
+      mutable_filter();
 
   // optional bytes msg = 101;
   inline bool has_msg() const;
@@ -378,28 +378,35 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::CallSketch* release_sketch();
   inline void set_allocated_sketch(::PS::CallSketch* sketch);
 
+  // optional .PS.GP.Call graph_partition = 303;
+  inline bool has_graph_partition() const;
+  inline void clear_graph_partition();
+  static const int kGraphPartitionFieldNumber = 303;
+  inline const ::PS::GP::Call& graph_partition() const;
+  inline ::PS::GP::Call* mutable_graph_partition();
+  inline ::PS::GP::Call* release_graph_partition();
+  inline void set_allocated_graph_partition(::PS::GP::Call* graph_partition);
+
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
   inline void clear_has_type();
   inline void set_has_request();
   inline void clear_has_request();
+  inline void set_has_do_not_reply();
+  inline void clear_has_do_not_reply();
   inline void set_has_customer();
   inline void clear_has_customer();
   inline void set_has_time();
   inline void clear_has_time();
-  inline void set_has_wait_time();
-  inline void clear_has_wait_time();
-  inline void set_has_has_key();
-  inline void clear_has_has_key();
   inline void set_has_key_range();
   inline void clear_has_key_range();
-  inline void set_has_key_signature();
-  inline void clear_has_key_signature();
   inline void set_has_key_channel();
   inline void clear_has_key_channel();
-  inline void set_has_erase_key_cache();
-  inline void clear_has_erase_key_cache();
+  inline void set_has_has_key();
+  inline void clear_has_has_key();
+  inline void set_has_key_type();
+  inline void clear_has_key_type();
   inline void set_has_msg();
   inline void clear_has_msg();
   inline void set_has_mng_node();
@@ -412,29 +419,33 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_linear_method();
   inline void set_has_sketch();
   inline void clear_has_sketch();
+  inline void set_has_graph_partition();
+  inline void clear_has_graph_partition();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int type_;
-  ::google::protobuf::int32 time_;
-  ::std::string* customer_;
-  ::google::protobuf::int32 wait_time_;
   bool request_;
+  bool do_not_reply_;
   bool has_key_;
-  bool erase_key_cache_;
-  ::PS::PbRange* key_range_;
-  ::google::protobuf::uint32 key_signature_;
+  ::std::string* customer_;
+  ::google::protobuf::RepeatedField< ::google::protobuf::int32 > wait_time_;
+  ::google::protobuf::int32 time_;
   ::google::protobuf::int32 key_channel_;
-  ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > uncompressed_size_;
+  ::PS::PbRange* key_range_;
+  ::google::protobuf::RepeatedField<int> value_type_;
+  ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig > filter_;
   ::std::string* msg_;
   ::PS::ManageNode* mng_node_;
   ::PS::ManageApp* mng_app_;
   ::PS::CallSharedPara* shared_para_;
   ::PS::LM::Call* linear_method_;
   ::PS::CallSketch* sketch_;
+  ::PS::GP::Call* graph_partition_;
+  int key_type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(17 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(19 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -681,282 +692,6 @@ class ManageApp : public ::google::protobuf::Message {
 
   void InitAsDefaultInstance();
   static ManageApp* default_instance_;
-};
-// -------------------------------------------------------------------
-
-class Timestamp : public ::google::protobuf::Message {
- public:
-  Timestamp();
-  virtual ~Timestamp();
-
-  Timestamp(const Timestamp& from);
-
-  inline Timestamp& operator=(const Timestamp& from) {
-    CopyFrom(from);
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
-    return _unknown_fields_;
-  }
-
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
-    return &_unknown_fields_;
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor();
-  static const Timestamp& default_instance();
-
-  void Swap(Timestamp* other);
-
-  // implements Message ----------------------------------------------
-
-  Timestamp* New() const;
-  void CopyFrom(const ::google::protobuf::Message& from);
-  void MergeFrom(const ::google::protobuf::Message& from);
-  void CopyFrom(const Timestamp& from);
-  void MergeFrom(const Timestamp& from);
-  void Clear();
-  bool IsInitialized() const;
-
-  int ByteSize() const;
-  bool MergePartialFromCodedStream(
-      ::google::protobuf::io::CodedInputStream* input);
-  void SerializeWithCachedSizes(
-      ::google::protobuf::io::CodedOutputStream* output) const;
-  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-  int GetCachedSize() const { return _cached_size_; }
-  private:
-  void SharedCtor();
-  void SharedDtor();
-  void SetCachedSize(int size) const;
-  public:
-
-  ::google::protobuf::Metadata GetMetadata() const;
-
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-
-  // required string sender = 1;
-  inline bool has_sender() const;
-  inline void clear_sender();
-  static const int kSenderFieldNumber = 1;
-  inline const ::std::string& sender() const;
-  inline void set_sender(const ::std::string& value);
-  inline void set_sender(const char* value);
-  inline void set_sender(const char* value, size_t size);
-  inline ::std::string* mutable_sender();
-  inline ::std::string* release_sender();
-  inline void set_allocated_sender(::std::string* sender);
-
-  // required int32 time = 2;
-  inline bool has_time() const;
-  inline void clear_time();
-  static const int kTimeFieldNumber = 2;
-  inline ::google::protobuf::int32 time() const;
-  inline void set_time(::google::protobuf::int32 value);
-
-  // @@protoc_insertion_point(class_scope:PS.Timestamp)
- private:
-  inline void set_has_sender();
-  inline void clear_has_sender();
-  inline void set_has_time();
-  inline void clear_has_time();
-
-  ::google::protobuf::UnknownFieldSet _unknown_fields_;
-
-  ::std::string* sender_;
-  ::google::protobuf::int32 time_;
-
-  mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(2 + 31) / 32];
-
-  friend void  protobuf_AddDesc_proto_2ftask_2eproto();
-  friend void protobuf_AssignDesc_proto_2ftask_2eproto();
-  friend void protobuf_ShutdownFile_proto_2ftask_2eproto();
-
-  void InitAsDefaultInstance();
-  static Timestamp* default_instance_;
-};
-// -------------------------------------------------------------------
-
-class CallSharedPara : public ::google::protobuf::Message {
- public:
-  CallSharedPara();
-  virtual ~CallSharedPara();
-
-  CallSharedPara(const CallSharedPara& from);
-
-  inline CallSharedPara& operator=(const CallSharedPara& from) {
-    CopyFrom(from);
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
-    return _unknown_fields_;
-  }
-
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
-    return &_unknown_fields_;
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor();
-  static const CallSharedPara& default_instance();
-
-  void Swap(CallSharedPara* other);
-
-  // implements Message ----------------------------------------------
-
-  CallSharedPara* New() const;
-  void CopyFrom(const ::google::protobuf::Message& from);
-  void MergeFrom(const ::google::protobuf::Message& from);
-  void CopyFrom(const CallSharedPara& from);
-  void MergeFrom(const CallSharedPara& from);
-  void Clear();
-  bool IsInitialized() const;
-
-  int ByteSize() const;
-  bool MergePartialFromCodedStream(
-      ::google::protobuf::io::CodedInputStream* input);
-  void SerializeWithCachedSizes(
-      ::google::protobuf::io::CodedOutputStream* output) const;
-  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
-  int GetCachedSize() const { return _cached_size_; }
-  private:
-  void SharedCtor();
-  void SharedDtor();
-  void SetCachedSize(int size) const;
-  public:
-
-  ::google::protobuf::Metadata GetMetadata() const;
-
-  // nested types ----------------------------------------------------
-
-  typedef CallSharedPara_Command Command;
-  static const Command PUSH = CallSharedPara_Command_PUSH;
-  static const Command PULL = CallSharedPara_Command_PULL;
-  static inline bool Command_IsValid(int value) {
-    return CallSharedPara_Command_IsValid(value);
-  }
-  static const Command Command_MIN =
-    CallSharedPara_Command_Command_MIN;
-  static const Command Command_MAX =
-    CallSharedPara_Command_Command_MAX;
-  static const int Command_ARRAYSIZE =
-    CallSharedPara_Command_Command_ARRAYSIZE;
-  static inline const ::google::protobuf::EnumDescriptor*
-  Command_descriptor() {
-    return CallSharedPara_Command_descriptor();
-  }
-  static inline const ::std::string& Command_Name(Command value) {
-    return CallSharedPara_Command_Name(value);
-  }
-  static inline bool Command_Parse(const ::std::string& name,
-      Command* value) {
-    return CallSharedPara_Command_Parse(name, value);
-  }
-
-  // accessors -------------------------------------------------------
-
-  // required .PS.CallSharedPara.Command cmd = 1;
-  inline bool has_cmd() const;
-  inline void clear_cmd();
-  static const int kCmdFieldNumber = 1;
-  inline ::PS::CallSharedPara_Command cmd() const;
-  inline void set_cmd(::PS::CallSharedPara_Command value);
-
-  // optional bool insert_key_freq = 3;
-  inline bool has_insert_key_freq() const;
-  inline void clear_insert_key_freq();
-  static const int kInsertKeyFreqFieldNumber = 3;
-  inline bool insert_key_freq() const;
-  inline void set_insert_key_freq(bool value);
-
-  // optional int32 query_key_freq = 4;
-  inline bool has_query_key_freq() const;
-  inline void clear_query_key_freq();
-  static const int kQueryKeyFreqFieldNumber = 4;
-  inline ::google::protobuf::int32 query_key_freq() const;
-  inline void set_query_key_freq(::google::protobuf::int32 value);
-
-  // optional bool insert_key = 5;
-  inline bool has_insert_key() const;
-  inline void clear_insert_key();
-  static const int kInsertKeyFieldNumber = 5;
-  inline bool insert_key() const;
-  inline void set_insert_key(bool value);
-
-  // optional int32 countmin_n = 6;
-  inline bool has_countmin_n() const;
-  inline void clear_countmin_n();
-  static const int kCountminNFieldNumber = 6;
-  inline ::google::protobuf::int32 countmin_n() const;
-  inline void set_countmin_n(::google::protobuf::int32 value);
-
-  // optional int32 countmin_k = 7;
-  inline bool has_countmin_k() const;
-  inline void clear_countmin_k();
-  static const int kCountminKFieldNumber = 7;
-  inline ::google::protobuf::int32 countmin_k() const;
-  inline void set_countmin_k(::google::protobuf::int32 value);
-
-  // optional bool replica = 10;
-  inline bool has_replica() const;
-  inline void clear_replica();
-  static const int kReplicaFieldNumber = 10;
-  inline bool replica() const;
-  inline void set_replica(bool value);
-
-  // repeated .PS.Timestamp backup = 11;
-  inline int backup_size() const;
-  inline void clear_backup();
-  static const int kBackupFieldNumber = 11;
-  inline const ::PS::Timestamp& backup(int index) const;
-  inline ::PS::Timestamp* mutable_backup(int index);
-  inline ::PS::Timestamp* add_backup();
-  inline const ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >&
-      backup() const;
-  inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
-      mutable_backup();
-
-  // @@protoc_insertion_point(class_scope:PS.CallSharedPara)
- private:
-  inline void set_has_cmd();
-  inline void clear_has_cmd();
-  inline void set_has_insert_key_freq();
-  inline void clear_has_insert_key_freq();
-  inline void set_has_query_key_freq();
-  inline void clear_has_query_key_freq();
-  inline void set_has_insert_key();
-  inline void clear_has_insert_key();
-  inline void set_has_countmin_n();
-  inline void clear_has_countmin_n();
-  inline void set_has_countmin_k();
-  inline void clear_has_countmin_k();
-  inline void set_has_replica();
-  inline void clear_has_replica();
-
-  ::google::protobuf::UnknownFieldSet _unknown_fields_;
-
-  int cmd_;
-  ::google::protobuf::int32 query_key_freq_;
-  bool insert_key_freq_;
-  bool insert_key_;
-  bool replica_;
-  ::google::protobuf::int32 countmin_n_;
-  ::google::protobuf::RepeatedPtrField< ::PS::Timestamp > backup_;
-  ::google::protobuf::int32 countmin_k_;
-
-  mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(8 + 31) / 32];
-
-  friend void  protobuf_AddDesc_proto_2ftask_2eproto();
-  friend void protobuf_AssignDesc_proto_2ftask_2eproto();
-  friend void protobuf_ShutdownFile_proto_2ftask_2eproto();
-
-  void InitAsDefaultInstance();
-  static CallSharedPara* default_instance_;
 };
 // -------------------------------------------------------------------
 
@@ -1226,7 +961,7 @@ inline void Task::set_type(::PS::Task_Type value) {
   type_ = value;
 }
 
-// required bool request = 2 [default = false];
+// optional bool request = 2 [default = false];
 inline bool Task::has_request() const {
   return (_has_bits_[0] & 0x00000002u) != 0;
 }
@@ -1248,15 +983,37 @@ inline void Task::set_request(bool value) {
   request_ = value;
 }
 
-// required string customer = 3;
-inline bool Task::has_customer() const {
+// optional bool do_not_reply = 3 [default = false];
+inline bool Task::has_do_not_reply() const {
   return (_has_bits_[0] & 0x00000004u) != 0;
 }
-inline void Task::set_has_customer() {
+inline void Task::set_has_do_not_reply() {
   _has_bits_[0] |= 0x00000004u;
 }
-inline void Task::clear_has_customer() {
+inline void Task::clear_has_do_not_reply() {
   _has_bits_[0] &= ~0x00000004u;
+}
+inline void Task::clear_do_not_reply() {
+  do_not_reply_ = false;
+  clear_has_do_not_reply();
+}
+inline bool Task::do_not_reply() const {
+  return do_not_reply_;
+}
+inline void Task::set_do_not_reply(bool value) {
+  set_has_do_not_reply();
+  do_not_reply_ = value;
+}
+
+// optional string customer = 4;
+inline bool Task::has_customer() const {
+  return (_has_bits_[0] & 0x00000008u) != 0;
+}
+inline void Task::set_has_customer() {
+  _has_bits_[0] |= 0x00000008u;
+}
+inline void Task::clear_has_customer() {
+  _has_bits_[0] &= ~0x00000008u;
 }
 inline void Task::clear_customer() {
   if (customer_ != &::google::protobuf::internal::kEmptyString) {
@@ -1318,15 +1075,15 @@ inline void Task::set_allocated_customer(::std::string* customer) {
   }
 }
 
-// optional int32 time = 4;
+// optional int32 time = 5;
 inline bool Task::has_time() const {
-  return (_has_bits_[0] & 0x00000008u) != 0;
+  return (_has_bits_[0] & 0x00000010u) != 0;
 }
 inline void Task::set_has_time() {
-  _has_bits_[0] |= 0x00000008u;
+  _has_bits_[0] |= 0x00000010u;
 }
 inline void Task::clear_has_time() {
-  _has_bits_[0] &= ~0x00000008u;
+  _has_bits_[0] &= ~0x00000010u;
 }
 inline void Task::clear_time() {
   time_ = 0;
@@ -1340,48 +1097,29 @@ inline void Task::set_time(::google::protobuf::int32 value) {
   time_ = value;
 }
 
-// optional int32 wait_time = 5 [default = -1];
-inline bool Task::has_wait_time() const {
-  return (_has_bits_[0] & 0x00000010u) != 0;
-}
-inline void Task::set_has_wait_time() {
-  _has_bits_[0] |= 0x00000010u;
-}
-inline void Task::clear_has_wait_time() {
-  _has_bits_[0] &= ~0x00000010u;
+// repeated int32 wait_time = 6;
+inline int Task::wait_time_size() const {
+  return wait_time_.size();
 }
 inline void Task::clear_wait_time() {
-  wait_time_ = -1;
-  clear_has_wait_time();
+  wait_time_.Clear();
 }
-inline ::google::protobuf::int32 Task::wait_time() const {
+inline ::google::protobuf::int32 Task::wait_time(int index) const {
+  return wait_time_.Get(index);
+}
+inline void Task::set_wait_time(int index, ::google::protobuf::int32 value) {
+  wait_time_.Set(index, value);
+}
+inline void Task::add_wait_time(::google::protobuf::int32 value) {
+  wait_time_.Add(value);
+}
+inline const ::google::protobuf::RepeatedField< ::google::protobuf::int32 >&
+Task::wait_time() const {
   return wait_time_;
 }
-inline void Task::set_wait_time(::google::protobuf::int32 value) {
-  set_has_wait_time();
-  wait_time_ = value;
-}
-
-// optional bool has_key = 6 [default = false];
-inline bool Task::has_has_key() const {
-  return (_has_bits_[0] & 0x00000020u) != 0;
-}
-inline void Task::set_has_has_key() {
-  _has_bits_[0] |= 0x00000020u;
-}
-inline void Task::clear_has_has_key() {
-  _has_bits_[0] &= ~0x00000020u;
-}
-inline void Task::clear_has_key() {
-  has_key_ = false;
-  clear_has_has_key();
-}
-inline bool Task::has_key() const {
-  return has_key_;
-}
-inline void Task::set_has_key(bool value) {
-  set_has_has_key();
-  has_key_ = value;
+inline ::google::protobuf::RepeatedField< ::google::protobuf::int32 >*
+Task::mutable_wait_time() {
+  return &wait_time_;
 }
 
 // optional .PS.PbRange key_range = 7;
@@ -1422,37 +1160,15 @@ inline void Task::set_allocated_key_range(::PS::PbRange* key_range) {
   }
 }
 
-// optional uint32 key_signature = 8;
-inline bool Task::has_key_signature() const {
+// optional int32 key_channel = 8;
+inline bool Task::has_key_channel() const {
   return (_has_bits_[0] & 0x00000080u) != 0;
 }
-inline void Task::set_has_key_signature() {
+inline void Task::set_has_key_channel() {
   _has_bits_[0] |= 0x00000080u;
 }
-inline void Task::clear_has_key_signature() {
-  _has_bits_[0] &= ~0x00000080u;
-}
-inline void Task::clear_key_signature() {
-  key_signature_ = 0u;
-  clear_has_key_signature();
-}
-inline ::google::protobuf::uint32 Task::key_signature() const {
-  return key_signature_;
-}
-inline void Task::set_key_signature(::google::protobuf::uint32 value) {
-  set_has_key_signature();
-  key_signature_ = value;
-}
-
-// optional int32 key_channel = 9;
-inline bool Task::has_key_channel() const {
-  return (_has_bits_[0] & 0x00000100u) != 0;
-}
-inline void Task::set_has_key_channel() {
-  _has_bits_[0] |= 0x00000100u;
-}
 inline void Task::clear_has_key_channel() {
-  _has_bits_[0] &= ~0x00000100u;
+  _has_bits_[0] &= ~0x00000080u;
 }
 inline void Task::clear_key_channel() {
   key_channel_ = 0;
@@ -1466,62 +1182,112 @@ inline void Task::set_key_channel(::google::protobuf::int32 value) {
   key_channel_ = value;
 }
 
-// optional bool erase_key_cache = 10 [default = false];
-inline bool Task::has_erase_key_cache() const {
-  return (_has_bits_[0] & 0x00000200u) != 0;
+// optional bool has_key = 9 [default = false];
+inline bool Task::has_has_key() const {
+  return (_has_bits_[0] & 0x00000100u) != 0;
 }
-inline void Task::set_has_erase_key_cache() {
-  _has_bits_[0] |= 0x00000200u;
+inline void Task::set_has_has_key() {
+  _has_bits_[0] |= 0x00000100u;
 }
-inline void Task::clear_has_erase_key_cache() {
-  _has_bits_[0] &= ~0x00000200u;
+inline void Task::clear_has_has_key() {
+  _has_bits_[0] &= ~0x00000100u;
 }
-inline void Task::clear_erase_key_cache() {
-  erase_key_cache_ = false;
-  clear_has_erase_key_cache();
+inline void Task::clear_has_key() {
+  has_key_ = false;
+  clear_has_has_key();
 }
-inline bool Task::erase_key_cache() const {
-  return erase_key_cache_;
+inline bool Task::has_key() const {
+  return has_key_;
 }
-inline void Task::set_erase_key_cache(bool value) {
-  set_has_erase_key_cache();
-  erase_key_cache_ = value;
+inline void Task::set_has_key(bool value) {
+  set_has_has_key();
+  has_key_ = value;
 }
 
-// repeated uint64 uncompressed_size = 11;
-inline int Task::uncompressed_size_size() const {
-  return uncompressed_size_.size();
+// optional .PS.DataType key_type = 13;
+inline bool Task::has_key_type() const {
+  return (_has_bits_[0] & 0x00000200u) != 0;
 }
-inline void Task::clear_uncompressed_size() {
-  uncompressed_size_.Clear();
+inline void Task::set_has_key_type() {
+  _has_bits_[0] |= 0x00000200u;
 }
-inline ::google::protobuf::uint64 Task::uncompressed_size(int index) const {
-  return uncompressed_size_.Get(index);
+inline void Task::clear_has_key_type() {
+  _has_bits_[0] &= ~0x00000200u;
 }
-inline void Task::set_uncompressed_size(int index, ::google::protobuf::uint64 value) {
-  uncompressed_size_.Set(index, value);
+inline void Task::clear_key_type() {
+  key_type_ = 0;
+  clear_has_key_type();
 }
-inline void Task::add_uncompressed_size(::google::protobuf::uint64 value) {
-  uncompressed_size_.Add(value);
+inline ::PS::DataType Task::key_type() const {
+  return static_cast< ::PS::DataType >(key_type_);
 }
-inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >&
-Task::uncompressed_size() const {
-  return uncompressed_size_;
+inline void Task::set_key_type(::PS::DataType value) {
+  assert(::PS::DataType_IsValid(value));
+  set_has_key_type();
+  key_type_ = value;
 }
-inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
-Task::mutable_uncompressed_size() {
-  return &uncompressed_size_;
+
+// repeated .PS.DataType value_type = 14;
+inline int Task::value_type_size() const {
+  return value_type_.size();
+}
+inline void Task::clear_value_type() {
+  value_type_.Clear();
+}
+inline ::PS::DataType Task::value_type(int index) const {
+  return static_cast< ::PS::DataType >(value_type_.Get(index));
+}
+inline void Task::set_value_type(int index, ::PS::DataType value) {
+  assert(::PS::DataType_IsValid(value));
+  value_type_.Set(index, value);
+}
+inline void Task::add_value_type(::PS::DataType value) {
+  assert(::PS::DataType_IsValid(value));
+  value_type_.Add(value);
+}
+inline const ::google::protobuf::RepeatedField<int>&
+Task::value_type() const {
+  return value_type_;
+}
+inline ::google::protobuf::RepeatedField<int>*
+Task::mutable_value_type() {
+  return &value_type_;
+}
+
+// repeated .PS.FilterConfig filter = 12;
+inline int Task::filter_size() const {
+  return filter_.size();
+}
+inline void Task::clear_filter() {
+  filter_.Clear();
+}
+inline const ::PS::FilterConfig& Task::filter(int index) const {
+  return filter_.Get(index);
+}
+inline ::PS::FilterConfig* Task::mutable_filter(int index) {
+  return filter_.Mutable(index);
+}
+inline ::PS::FilterConfig* Task::add_filter() {
+  return filter_.Add();
+}
+inline const ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig >&
+Task::filter() const {
+  return filter_;
+}
+inline ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig >*
+Task::mutable_filter() {
+  return &filter_;
 }
 
 // optional bytes msg = 101;
 inline bool Task::has_msg() const {
-  return (_has_bits_[0] & 0x00000800u) != 0;
+  return (_has_bits_[0] & 0x00001000u) != 0;
 }
 inline void Task::set_has_msg() {
-  _has_bits_[0] |= 0x00000800u;
+  _has_bits_[0] |= 0x00001000u;
 }
 inline void Task::clear_has_msg() {
-  _has_bits_[0] &= ~0x00000800u;
+  _has_bits_[0] &= ~0x00001000u;
 }
 inline void Task::clear_msg() {
   if (msg_ != &::google::protobuf::internal::kEmptyString) {
@@ -1585,13 +1351,13 @@ inline void Task::set_allocated_msg(::std::string* msg) {
 
 // optional .PS.ManageNode mng_node = 102;
 inline bool Task::has_mng_node() const {
-  return (_has_bits_[0] & 0x00001000u) != 0;
+  return (_has_bits_[0] & 0x00002000u) != 0;
 }
 inline void Task::set_has_mng_node() {
-  _has_bits_[0] |= 0x00001000u;
+  _has_bits_[0] |= 0x00002000u;
 }
 inline void Task::clear_has_mng_node() {
-  _has_bits_[0] &= ~0x00001000u;
+  _has_bits_[0] &= ~0x00002000u;
 }
 inline void Task::clear_mng_node() {
   if (mng_node_ != NULL) mng_node_->::PS::ManageNode::Clear();
@@ -1623,13 +1389,13 @@ inline void Task::set_allocated_mng_node(::PS::ManageNode* mng_node) {
 
 // optional .PS.ManageApp mng_app = 103;
 inline bool Task::has_mng_app() const {
-  return (_has_bits_[0] & 0x00002000u) != 0;
+  return (_has_bits_[0] & 0x00004000u) != 0;
 }
 inline void Task::set_has_mng_app() {
-  _has_bits_[0] |= 0x00002000u;
+  _has_bits_[0] |= 0x00004000u;
 }
 inline void Task::clear_has_mng_app() {
-  _has_bits_[0] &= ~0x00002000u;
+  _has_bits_[0] &= ~0x00004000u;
 }
 inline void Task::clear_mng_app() {
   if (mng_app_ != NULL) mng_app_->::PS::ManageApp::Clear();
@@ -1661,13 +1427,13 @@ inline void Task::set_allocated_mng_app(::PS::ManageApp* mng_app) {
 
 // optional .PS.CallSharedPara shared_para = 201;
 inline bool Task::has_shared_para() const {
-  return (_has_bits_[0] & 0x00004000u) != 0;
+  return (_has_bits_[0] & 0x00008000u) != 0;
 }
 inline void Task::set_has_shared_para() {
-  _has_bits_[0] |= 0x00004000u;
+  _has_bits_[0] |= 0x00008000u;
 }
 inline void Task::clear_has_shared_para() {
-  _has_bits_[0] &= ~0x00004000u;
+  _has_bits_[0] &= ~0x00008000u;
 }
 inline void Task::clear_shared_para() {
   if (shared_para_ != NULL) shared_para_->::PS::CallSharedPara::Clear();
@@ -1699,13 +1465,13 @@ inline void Task::set_allocated_shared_para(::PS::CallSharedPara* shared_para) {
 
 // optional .PS.LM.Call linear_method = 301;
 inline bool Task::has_linear_method() const {
-  return (_has_bits_[0] & 0x00008000u) != 0;
+  return (_has_bits_[0] & 0x00010000u) != 0;
 }
 inline void Task::set_has_linear_method() {
-  _has_bits_[0] |= 0x00008000u;
+  _has_bits_[0] |= 0x00010000u;
 }
 inline void Task::clear_has_linear_method() {
-  _has_bits_[0] &= ~0x00008000u;
+  _has_bits_[0] &= ~0x00010000u;
 }
 inline void Task::clear_linear_method() {
   if (linear_method_ != NULL) linear_method_->::PS::LM::Call::Clear();
@@ -1737,13 +1503,13 @@ inline void Task::set_allocated_linear_method(::PS::LM::Call* linear_method) {
 
 // optional .PS.CallSketch sketch = 302;
 inline bool Task::has_sketch() const {
-  return (_has_bits_[0] & 0x00010000u) != 0;
+  return (_has_bits_[0] & 0x00020000u) != 0;
 }
 inline void Task::set_has_sketch() {
-  _has_bits_[0] |= 0x00010000u;
+  _has_bits_[0] |= 0x00020000u;
 }
 inline void Task::clear_has_sketch() {
-  _has_bits_[0] &= ~0x00010000u;
+  _has_bits_[0] &= ~0x00020000u;
 }
 inline void Task::clear_sketch() {
   if (sketch_ != NULL) sketch_->::PS::CallSketch::Clear();
@@ -1770,6 +1536,44 @@ inline void Task::set_allocated_sketch(::PS::CallSketch* sketch) {
     set_has_sketch();
   } else {
     clear_has_sketch();
+  }
+}
+
+// optional .PS.GP.Call graph_partition = 303;
+inline bool Task::has_graph_partition() const {
+  return (_has_bits_[0] & 0x00040000u) != 0;
+}
+inline void Task::set_has_graph_partition() {
+  _has_bits_[0] |= 0x00040000u;
+}
+inline void Task::clear_has_graph_partition() {
+  _has_bits_[0] &= ~0x00040000u;
+}
+inline void Task::clear_graph_partition() {
+  if (graph_partition_ != NULL) graph_partition_->::PS::GP::Call::Clear();
+  clear_has_graph_partition();
+}
+inline const ::PS::GP::Call& Task::graph_partition() const {
+  return graph_partition_ != NULL ? *graph_partition_ : *default_instance_->graph_partition_;
+}
+inline ::PS::GP::Call* Task::mutable_graph_partition() {
+  set_has_graph_partition();
+  if (graph_partition_ == NULL) graph_partition_ = new ::PS::GP::Call;
+  return graph_partition_;
+}
+inline ::PS::GP::Call* Task::release_graph_partition() {
+  clear_has_graph_partition();
+  ::PS::GP::Call* temp = graph_partition_;
+  graph_partition_ = NULL;
+  return temp;
+}
+inline void Task::set_allocated_graph_partition(::PS::GP::Call* graph_partition) {
+  delete graph_partition_;
+  graph_partition_ = graph_partition;
+  if (graph_partition) {
+    set_has_graph_partition();
+  } else {
+    clear_has_graph_partition();
   }
 }
 
@@ -1888,286 +1692,6 @@ inline void ManageApp::set_allocated_app_config(::PS::AppConfig* app_config) {
   } else {
     clear_has_app_config();
   }
-}
-
-// -------------------------------------------------------------------
-
-// Timestamp
-
-// required string sender = 1;
-inline bool Timestamp::has_sender() const {
-  return (_has_bits_[0] & 0x00000001u) != 0;
-}
-inline void Timestamp::set_has_sender() {
-  _has_bits_[0] |= 0x00000001u;
-}
-inline void Timestamp::clear_has_sender() {
-  _has_bits_[0] &= ~0x00000001u;
-}
-inline void Timestamp::clear_sender() {
-  if (sender_ != &::google::protobuf::internal::kEmptyString) {
-    sender_->clear();
-  }
-  clear_has_sender();
-}
-inline const ::std::string& Timestamp::sender() const {
-  return *sender_;
-}
-inline void Timestamp::set_sender(const ::std::string& value) {
-  set_has_sender();
-  if (sender_ == &::google::protobuf::internal::kEmptyString) {
-    sender_ = new ::std::string;
-  }
-  sender_->assign(value);
-}
-inline void Timestamp::set_sender(const char* value) {
-  set_has_sender();
-  if (sender_ == &::google::protobuf::internal::kEmptyString) {
-    sender_ = new ::std::string;
-  }
-  sender_->assign(value);
-}
-inline void Timestamp::set_sender(const char* value, size_t size) {
-  set_has_sender();
-  if (sender_ == &::google::protobuf::internal::kEmptyString) {
-    sender_ = new ::std::string;
-  }
-  sender_->assign(reinterpret_cast<const char*>(value), size);
-}
-inline ::std::string* Timestamp::mutable_sender() {
-  set_has_sender();
-  if (sender_ == &::google::protobuf::internal::kEmptyString) {
-    sender_ = new ::std::string;
-  }
-  return sender_;
-}
-inline ::std::string* Timestamp::release_sender() {
-  clear_has_sender();
-  if (sender_ == &::google::protobuf::internal::kEmptyString) {
-    return NULL;
-  } else {
-    ::std::string* temp = sender_;
-    sender_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
-    return temp;
-  }
-}
-inline void Timestamp::set_allocated_sender(::std::string* sender) {
-  if (sender_ != &::google::protobuf::internal::kEmptyString) {
-    delete sender_;
-  }
-  if (sender) {
-    set_has_sender();
-    sender_ = sender;
-  } else {
-    clear_has_sender();
-    sender_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
-  }
-}
-
-// required int32 time = 2;
-inline bool Timestamp::has_time() const {
-  return (_has_bits_[0] & 0x00000002u) != 0;
-}
-inline void Timestamp::set_has_time() {
-  _has_bits_[0] |= 0x00000002u;
-}
-inline void Timestamp::clear_has_time() {
-  _has_bits_[0] &= ~0x00000002u;
-}
-inline void Timestamp::clear_time() {
-  time_ = 0;
-  clear_has_time();
-}
-inline ::google::protobuf::int32 Timestamp::time() const {
-  return time_;
-}
-inline void Timestamp::set_time(::google::protobuf::int32 value) {
-  set_has_time();
-  time_ = value;
-}
-
-// -------------------------------------------------------------------
-
-// CallSharedPara
-
-// required .PS.CallSharedPara.Command cmd = 1;
-inline bool CallSharedPara::has_cmd() const {
-  return (_has_bits_[0] & 0x00000001u) != 0;
-}
-inline void CallSharedPara::set_has_cmd() {
-  _has_bits_[0] |= 0x00000001u;
-}
-inline void CallSharedPara::clear_has_cmd() {
-  _has_bits_[0] &= ~0x00000001u;
-}
-inline void CallSharedPara::clear_cmd() {
-  cmd_ = 1;
-  clear_has_cmd();
-}
-inline ::PS::CallSharedPara_Command CallSharedPara::cmd() const {
-  return static_cast< ::PS::CallSharedPara_Command >(cmd_);
-}
-inline void CallSharedPara::set_cmd(::PS::CallSharedPara_Command value) {
-  assert(::PS::CallSharedPara_Command_IsValid(value));
-  set_has_cmd();
-  cmd_ = value;
-}
-
-// optional bool insert_key_freq = 3;
-inline bool CallSharedPara::has_insert_key_freq() const {
-  return (_has_bits_[0] & 0x00000002u) != 0;
-}
-inline void CallSharedPara::set_has_insert_key_freq() {
-  _has_bits_[0] |= 0x00000002u;
-}
-inline void CallSharedPara::clear_has_insert_key_freq() {
-  _has_bits_[0] &= ~0x00000002u;
-}
-inline void CallSharedPara::clear_insert_key_freq() {
-  insert_key_freq_ = false;
-  clear_has_insert_key_freq();
-}
-inline bool CallSharedPara::insert_key_freq() const {
-  return insert_key_freq_;
-}
-inline void CallSharedPara::set_insert_key_freq(bool value) {
-  set_has_insert_key_freq();
-  insert_key_freq_ = value;
-}
-
-// optional int32 query_key_freq = 4;
-inline bool CallSharedPara::has_query_key_freq() const {
-  return (_has_bits_[0] & 0x00000004u) != 0;
-}
-inline void CallSharedPara::set_has_query_key_freq() {
-  _has_bits_[0] |= 0x00000004u;
-}
-inline void CallSharedPara::clear_has_query_key_freq() {
-  _has_bits_[0] &= ~0x00000004u;
-}
-inline void CallSharedPara::clear_query_key_freq() {
-  query_key_freq_ = 0;
-  clear_has_query_key_freq();
-}
-inline ::google::protobuf::int32 CallSharedPara::query_key_freq() const {
-  return query_key_freq_;
-}
-inline void CallSharedPara::set_query_key_freq(::google::protobuf::int32 value) {
-  set_has_query_key_freq();
-  query_key_freq_ = value;
-}
-
-// optional bool insert_key = 5;
-inline bool CallSharedPara::has_insert_key() const {
-  return (_has_bits_[0] & 0x00000008u) != 0;
-}
-inline void CallSharedPara::set_has_insert_key() {
-  _has_bits_[0] |= 0x00000008u;
-}
-inline void CallSharedPara::clear_has_insert_key() {
-  _has_bits_[0] &= ~0x00000008u;
-}
-inline void CallSharedPara::clear_insert_key() {
-  insert_key_ = false;
-  clear_has_insert_key();
-}
-inline bool CallSharedPara::insert_key() const {
-  return insert_key_;
-}
-inline void CallSharedPara::set_insert_key(bool value) {
-  set_has_insert_key();
-  insert_key_ = value;
-}
-
-// optional int32 countmin_n = 6;
-inline bool CallSharedPara::has_countmin_n() const {
-  return (_has_bits_[0] & 0x00000010u) != 0;
-}
-inline void CallSharedPara::set_has_countmin_n() {
-  _has_bits_[0] |= 0x00000010u;
-}
-inline void CallSharedPara::clear_has_countmin_n() {
-  _has_bits_[0] &= ~0x00000010u;
-}
-inline void CallSharedPara::clear_countmin_n() {
-  countmin_n_ = 0;
-  clear_has_countmin_n();
-}
-inline ::google::protobuf::int32 CallSharedPara::countmin_n() const {
-  return countmin_n_;
-}
-inline void CallSharedPara::set_countmin_n(::google::protobuf::int32 value) {
-  set_has_countmin_n();
-  countmin_n_ = value;
-}
-
-// optional int32 countmin_k = 7;
-inline bool CallSharedPara::has_countmin_k() const {
-  return (_has_bits_[0] & 0x00000020u) != 0;
-}
-inline void CallSharedPara::set_has_countmin_k() {
-  _has_bits_[0] |= 0x00000020u;
-}
-inline void CallSharedPara::clear_has_countmin_k() {
-  _has_bits_[0] &= ~0x00000020u;
-}
-inline void CallSharedPara::clear_countmin_k() {
-  countmin_k_ = 0;
-  clear_has_countmin_k();
-}
-inline ::google::protobuf::int32 CallSharedPara::countmin_k() const {
-  return countmin_k_;
-}
-inline void CallSharedPara::set_countmin_k(::google::protobuf::int32 value) {
-  set_has_countmin_k();
-  countmin_k_ = value;
-}
-
-// optional bool replica = 10;
-inline bool CallSharedPara::has_replica() const {
-  return (_has_bits_[0] & 0x00000040u) != 0;
-}
-inline void CallSharedPara::set_has_replica() {
-  _has_bits_[0] |= 0x00000040u;
-}
-inline void CallSharedPara::clear_has_replica() {
-  _has_bits_[0] &= ~0x00000040u;
-}
-inline void CallSharedPara::clear_replica() {
-  replica_ = false;
-  clear_has_replica();
-}
-inline bool CallSharedPara::replica() const {
-  return replica_;
-}
-inline void CallSharedPara::set_replica(bool value) {
-  set_has_replica();
-  replica_ = value;
-}
-
-// repeated .PS.Timestamp backup = 11;
-inline int CallSharedPara::backup_size() const {
-  return backup_.size();
-}
-inline void CallSharedPara::clear_backup() {
-  backup_.Clear();
-}
-inline const ::PS::Timestamp& CallSharedPara::backup(int index) const {
-  return backup_.Get(index);
-}
-inline ::PS::Timestamp* CallSharedPara::mutable_backup(int index) {
-  return backup_.Mutable(index);
-}
-inline ::PS::Timestamp* CallSharedPara::add_backup() {
-  return backup_.Add();
-}
-inline const ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >&
-CallSharedPara::backup() const {
-  return backup_;
-}
-inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
-CallSharedPara::mutable_backup() {
-  return &backup_;
 }
 
 // -------------------------------------------------------------------
@@ -2395,10 +1919,6 @@ inline const EnumDescriptor* GetEnumDescriptor< ::PS::ManageNode_Command>() {
 template <>
 inline const EnumDescriptor* GetEnumDescriptor< ::PS::ManageApp_Command>() {
   return ::PS::ManageApp_Command_descriptor();
-}
-template <>
-inline const EnumDescriptor* GetEnumDescriptor< ::PS::CallSharedPara_Command>() {
-  return ::PS::CallSharedPara_Command_descriptor();
 }
 template <>
 inline const EnumDescriptor* GetEnumDescriptor< ::PS::CallSketch_Command>() {

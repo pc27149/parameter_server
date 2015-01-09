@@ -1,47 +1,15 @@
 #include "system/app.h"
-#include "linear_method/darling.h"
-#include "linear_method/batch_solver.h"
-#include "neural_network/sgd_solver.h"
 namespace PS {
-
 DEFINE_bool(test_fault_tol, false, "");
 
-AppPtr App::create(const AppConfig& conf) {
-  AppPtr ptr;
-  if (conf.has_linear_method()) {
-    const auto& lm = conf.linear_method();
-    if (lm.solver().minibatch_size() <= 0) {
-      // batch solver
-      if (lm.has_darling()) {
-        ptr = AppPtr(new LM::Darling());
-      } else {
-        ptr = AppPtr(new LM::BatchSolver());
-      }
-    } else {
-      // online sovler
-    }
-  } else if (conf.has_neural_network()) {
-    ptr = AppPtr(new NN::SGDSolver());
-  } else {
-    CHECK(false) << "unknown app: " << conf.DebugString();
-  }
-
-  CHECK(conf.has_app_name());
-  ptr->name_ = conf.app_name();
-  for (int i = 0; i < conf.parameter_name_size(); ++i) {
-    ptr->child_customers_.push_back(conf.parameter_name(i));
-  }
-  ptr->app_cf_ = conf;
-  ptr->init();
-  return ptr;
-}
-
-void App::stop() {
+void App::stopAll() {
+  // send terminate signal to all others
   Task terminate;
   terminate.set_type(Task::TERMINATE);
   auto pool = taskpool(kLiveGroup);
   if (!pool) {
-    // hack... i need to send the terminal signal to myself
+    // so it's a single machine version. i need to send the terminal signal to
+    // myself
     std::vector<Node> nodes(1, sys_.myNode());
     exec_.init(nodes);
     pool = taskpool(kLiveGroup);
